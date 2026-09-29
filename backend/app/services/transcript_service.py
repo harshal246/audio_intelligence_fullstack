@@ -161,6 +161,8 @@ def save_simple_transcript(
     if transcript:
         existing_data = transcript.full_transcript_data or []
         transcript.full_transcript_data = existing_data + segments
+        if audio_url and not transcript.audio_url:
+            transcript.audio_url = audio_url
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(transcript, "full_transcript_data")
         db.commit()
@@ -325,13 +327,14 @@ def transcribe_simple_audio(
                     "text": text,
                 })
     finally:
-        # Always clean up the original audio file
-        if audio_path and os.path.exists(audio_path):
+        # If using S3, the file was uploaded to cloud storage, so remove the local temporary file.
+        # If using local storage (USE_S3=False), PRESERVE the file on disk so it can be streamed and played.
+        if settings.USE_S3 and audio_path and os.path.exists(audio_path):
             try:
                 os.remove(audio_path)
-                logger.info("Deleted raw audio file post-transcription: %s", audio_path)
+                logger.info("Deleted temporary audio file post-S3-upload: %s", audio_path)
             except Exception as e:
-                logger.error("Failed to delete raw audio file %s: %s", audio_path, e)
+                logger.error("Failed to delete temporary audio file %s: %s", audio_path, e)
 
     return save_simple_transcript(db, user_id, audio_filename, segments, transcript_id, title, audio_url, trigger_embeddings=trigger_embeddings)
 

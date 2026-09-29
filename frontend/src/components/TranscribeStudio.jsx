@@ -14,9 +14,12 @@ import {
   AlertCircle,
   Loader2,
   RefreshCw,
-  MessageSquare
+  MessageSquare,
+  Mic,
+  Radio
 } from 'lucide-react';
 import { transcribeAudioApi } from '../api';
+import LiveAudioStudio from './LiveAudioStudio';
 
 export default function TranscribeStudio({ 
   onTranscriptCreated, 
@@ -24,7 +27,7 @@ export default function TranscribeStudio({
   onRequireAuth,
   isAuthenticated 
 }) {
-  const [mode, setMode] = useState('audio'); // 'audio' | 'text'
+  const [mode, setMode] = useState('live'); // 'live' | 'audio' | 'text'
   const [audioFile, setAudioFile] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [transcriptText, setTranscriptText] = useState('');
@@ -83,6 +86,37 @@ export default function TranscribeStudio({
     }
   };
 
+  const handleDirectLiveTranscribe = async (file, liveSpeech) => {
+    if (!isAuthenticated) {
+      onRequireAuth();
+      return;
+    }
+    setAudioFile(file);
+    setIsLoading(true);
+    setLoadingStep('Uploading & Diarizing Live Audio via Gemini AI...');
+    setError(null);
+
+    try {
+      const finalTitle = title || (liveSpeech ? (liveSpeech.slice(0, 40) + (liveSpeech.length > 40 ? '...' : '')) : `Live Session ${new Date().toLocaleDateString()}`);
+      const response = await transcribeAudioApi({
+        audioFile: file,
+        transcriptText: null,
+        title: finalTitle,
+        generateSummary,
+      });
+
+      setResult(response);
+      if (onTranscriptCreated) {
+        onTranscriptCreated(response);
+      }
+    } catch (err) {
+      setError(err.message || 'Live audio transcription failed.');
+    } finally {
+      setIsLoading(false);
+      setLoadingStep('');
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -92,6 +126,10 @@ export default function TranscribeStudio({
       return;
     }
 
+    if (mode === 'live' && !audioFile) {
+      setError('Please record live audio using the microphone above before submitting.');
+      return;
+    }
     if (mode === 'audio' && !audioFile) {
       setError('Please select or drop an audio file first.');
       return;
@@ -102,11 +140,11 @@ export default function TranscribeStudio({
     }
 
     setIsLoading(true);
-    setLoadingStep(mode === 'audio' ? 'Uploading & Diarizing via Gemini AI...' : 'Parsing and indexing text...');
+    setLoadingStep(mode === 'text' ? 'Parsing and indexing text...' : 'Uploading & Diarizing via Gemini AI...');
 
     try {
       const response = await transcribeAudioApi({
-        audioFile: mode === 'audio' ? audioFile : null,
+        audioFile: (mode === 'audio' || mode === 'live') ? audioFile : null,
         transcriptText: mode === 'text' ? transcriptText : null,
         title: title || undefined,
         generateSummary,
@@ -170,7 +208,7 @@ export default function TranscribeStudio({
           </div>
           <div>
             <h2 className="card-title">Transcription & Diarization Studio</h2>
-            <p className="card-subtitle">Upload speech audio for AI multi-speaker recognition and semantic embedding</p>
+            <p className="card-subtitle">Hear live speech from your mic or upload audio for AI multi-speaker recognition and semantic search</p>
           </div>
         </div>
 
@@ -178,8 +216,23 @@ export default function TranscribeStudio({
         <div className="mode-toggle-group">
           <button
             type="button"
+            className={`mode-btn ${mode === 'live' ? 'active live-active' : ''}`}
+            onClick={() => {
+              setMode('live');
+              setError(null);
+            }}
+          >
+            <Mic size={18} className="live-mic-pulse-icon" />
+            <span>Hear & Record Live</span>
+            <span className="live-dot-tag">LIVE</span>
+          </button>
+          <button
+            type="button"
             className={`mode-btn ${mode === 'audio' ? 'active' : ''}`}
-            onClick={() => setMode('audio')}
+            onClick={() => {
+              setMode('audio');
+              setError(null);
+            }}
           >
             <FileAudio size={18} />
             <span>Upload Audio File</span>
@@ -187,7 +240,10 @@ export default function TranscribeStudio({
           <button
             type="button"
             className={`mode-btn ${mode === 'text' ? 'active' : ''}`}
-            onClick={() => setMode('text')}
+            onClick={() => {
+              setMode('text');
+              setError(null);
+            }}
           >
             <FileText size={18} />
             <span>Manual Text Ingestion</span>
@@ -195,6 +251,23 @@ export default function TranscribeStudio({
         </div>
 
         <form onSubmit={handleSubmit} className="studio-form">
+          {mode === 'live' && (
+            <LiveAudioStudio
+              isAuthenticated={isAuthenticated}
+              onRequireAuth={onRequireAuth}
+              onAudioCaptured={(file, url) => {
+                setAudioFile(file);
+                if (audioUrl) {
+                  URL.revokeObjectURL(audioUrl);
+                }
+                setAudioUrl(url);
+                if (!title) {
+                  setTitle(`Live Session ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+                }
+              }}
+              onDirectTranscribe={handleDirectLiveTranscribe}
+            />
+          )}
           {mode === 'audio' ? (
             <div 
               className={`dropzone-box ${audioFile ? 'has-file' : ''}`}

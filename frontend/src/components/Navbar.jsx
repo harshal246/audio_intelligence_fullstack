@@ -25,7 +25,7 @@ export default function Navbar({
   transcriptCount = 0
 }) {
   const navItems = [
-    { id: 'transcribe', label: 'Transcribe Studio', icon: Mic, badge: 'Diarize' },
+    { id: 'transcribe', label: 'Transcribe Studio', icon: Mic, badge: 'Live Mic' },
     { id: 'chat', label: 'Audio Q&A Bot', icon: Bot, badge: 'RAG' },
     { id: 'summary', label: 'Executive Summaries', icon: FileText, badge: 'AI Insights' },
     { id: 'archive', label: 'Transcripts Library', icon: FolderArchive, count: transcriptCount },

@@ -100,3 +100,34 @@ async def list_sessions(
         ))
 
     return result
+
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_200_OK)
+async def delete_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a chat session and all of its message history.
+    """
+    import uuid
+    try:
+        s_uuid = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+
+    session = db.query(ChatSession).filter(
+        ChatSession.id == s_uuid,
+        ChatSession.user_id == current_user.id
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    db.query(ChatMessage).filter(ChatMessage.session_id == s_uuid).delete()
+    db.delete(session)
+    db.commit()
+
+    return {"status": "success", "message": "Chat session deleted successfully"}
+

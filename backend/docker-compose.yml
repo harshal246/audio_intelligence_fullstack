@@ -72,6 +72,8 @@ services:
     profiles: ["prod"]
     image: ${DOCKERHUB_USERNAME}/audio-intelligence:latest
     container_name: audio_intelligence_worker
+    volumes:
+      - uploads_data:/app/uploads
     env_file:
       - .env
     environment:
@@ -91,6 +93,8 @@ services:
     container_name: audio_intelligence_api
     ports:
       - "8000:8000"
+    volumes:
+      - uploads_data:/app/uploads
     env_file:
       - .env
     environment:
@@ -119,3 +123,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:

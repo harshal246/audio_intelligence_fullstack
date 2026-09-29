@@ -12,16 +12,17 @@ import {
   AlertCircle,
   Loader2,
   Copy,
-  Check
+  Check,
+  Trash2
 } from 'lucide-react';
 import { marked } from 'marked';
-import { askQuestionApi, fetchChatSessionsApi } from '../api';
+import { askQuestionApi, fetchChatSessionsApi, deleteChatSessionApi } from '../api';
 
-export default function ChatBot({ isAuthenticated, onRequireAuth }) {
+export default function ChatBot({ isAuthenticated, onRequireAuth, initialQuery = '' }) {
   const [sessions, setSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [question, setQuestion] = useState('');
+  const [question, setQuestion] = useState(initialQuery || '');
   const [targetDate, setTargetDate] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
@@ -40,12 +41,27 @@ export default function ChatBot({ isAuthenticated, onRequireAuth }) {
     "Summarize what was decided regarding project goals.",
   ];
 
-  const loadSessions = async (dateFilter = targetDate) => {
+  const loadSessions = async (dateFilter = targetDate, autoSelectLatest = true) => {
     if (!isAuthenticated) return;
     setIsFetchingSessions(true);
     try {
       const data = await fetchChatSessionsApi(dateFilter || null);
-      setSessions(Array.isArray(data) ? data : []);
+      const sessionList = Array.isArray(data) ? data : [];
+      setSessions(sessionList);
+
+      // Auto-select latest session if none is selected
+      if (sessionList.length > 0) {
+        if (!currentSessionId && autoSelectLatest) {
+          const latest = sessionList[0];
+          setCurrentSessionId(latest.id);
+          setMessages(latest.history || []);
+        } else if (currentSessionId) {
+          const match = sessionList.find(s => s.id === currentSessionId);
+          if (match && match.history && match.history.length > 0) {
+            setMessages(match.history);
+          }
+        }
+      }
     } catch (err) {
       console.warn("Failed to load sessions:", err);
     } finally {
@@ -55,9 +71,15 @@ export default function ChatBot({ isAuthenticated, onRequireAuth }) {
 
   useEffect(() => {
     if (isAuthenticated) {
-      loadSessions();
+      loadSessions(targetDate, true);
     }
   }, [isAuthenticated, targetDate]);
+
+  useEffect(() => {
+    if (initialQuery) {
+      setQuestion(initialQuery);
+    }
+  }, [initialQuery]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -69,6 +91,28 @@ export default function ChatBot({ isAuthenticated, onRequireAuth }) {
       setMessages(session.history);
     } else {
       setMessages([]);
+    }
+  };
+
+  const handleDeleteSession = async (e, sessionId) => {
+    e.stopPropagation();
+    if (!window.confirm("Are you sure you want to delete this conversation history?")) return;
+
+    try {
+      await deleteChatSessionApi(sessionId);
+      const remaining = sessions.filter(s => s.id !== sessionId);
+      setSessions(remaining);
+      if (currentSessionId === sessionId) {
+        if (remaining.length > 0) {
+          setCurrentSessionId(remaining[0].id);
+          setMessages(remaining[0].history || []);
+        } else {
+          setCurrentSessionId(null);
+          setMessages([]);
+        }
+      }
+    } catch (err) {
+      alert("Error deleting conversation: " + err.message);
     }
   };
 
@@ -225,6 +269,14 @@ export default function ChatBot({ isAuthenticated, onRequireAuth }) {
                       )}
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    className="session-delete-action-btn"
+                    onClick={(e) => handleDeleteSession(e, sess.id)}
+                    title="Delete conversation history"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               );
             })

@@ -229,6 +229,12 @@ export async function fetchChatSessionsApi(targetDate = null) {
   return apiRequest(`/chat/sessions${query}`);
 }
 
+export async function deleteChatSessionApi(sessionId) {
+  return apiRequest(`/chat/sessions/${sessionId}`, {
+    method: 'DELETE',
+  });
+}
+
 // ── Server Health Check ─────────────────────────────────────────
 export async function checkServerHealthApi() {
   const baseUrl = getApiBaseUrl();

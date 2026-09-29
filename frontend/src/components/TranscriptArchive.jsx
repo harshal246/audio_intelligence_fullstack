@@ -18,7 +18,7 @@ import {
   Copy,
   Check
 } from 'lucide-react';
-import { fetchTranscriptsApi, fetchTranscriptDetailsApi, deleteTranscriptApi } from '../api';
+import { fetchTranscriptsApi, fetchTranscriptDetailsApi, deleteTranscriptApi, getApiBaseUrl } from '../api';
 
 export default function TranscriptArchive({ 
   isAuthenticated, 
@@ -41,6 +41,15 @@ export default function TranscriptArchive({
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [modalDetails, setModalDetails] = useState(null);
   const [copiedModal, setCopiedModal] = useState(false);
+
+  // Helper to resolve relative audio URLs against backend base URL
+  const getAudioUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    const base = getApiBaseUrl().replace(/\/+$/, '');
+    const cleanPath = url.startsWith('/') ? url : `/${url}`;
+    return `${base}${cleanPath}`;
+  };
 
   const loadArchive = async () => {
     if (!isAuthenticated) return;
@@ -240,7 +249,7 @@ export default function TranscriptArchive({
                   <div className="grid-card-audio-bar">
                     <audio
                       ref={(el) => (audioRefs.current[t.transcript_id] = el)}
-                      src={t.audio_url}
+                      src={getAudioUrl(t.audio_url)}
                       onEnded={() => setPlayingId(null)}
                     />
                     <button
@@ -285,7 +294,7 @@ export default function TranscriptArchive({
 
                   <button 
                     className="card-action-btn chat-btn"
-                    onClick={() => onSwitchToChat && onSwitchToChat()}
+                    onClick={() => onSwitchToChat && onSwitchToChat(`Tell me what was discussed in "${t.title || 'this session'}"`)}
                     title="Ask AI questions about this audio"
                   >
                     <MessageSquare size={14} />

@@ -64,10 +64,15 @@ async def get_transcripts(
     for t in transcripts:
         t_id = str(t.id)
 
-        # Convert stored S3 URL to a presigned URL the frontend can access
+        # Convert stored S3 URL to a presigned URL the frontend can access, or format local URL
         audio_url = t.audio_url
-        if settings.USE_S3 and audio_url:
+        if settings.USE_S3 and audio_url and "s3" in audio_url:
             audio_url = generate_presigned_url(audio_url)
+        elif audio_url and not audio_url.startswith("http"):
+            clean_path = audio_url.replace("\\", "/")
+            if not clean_path.startswith("/"):
+                clean_path = f"/{clean_path}"
+            audio_url = clean_path
 
         result.append({
             "transcript_id": t_id,
@@ -137,7 +142,12 @@ async def transcribe_simple(
 
         upload_dir = Path(settings.UPLOAD_DIR)
         upload_dir.mkdir(parents=True, exist_ok=True)
-        original_path = upload_dir / audio.filename
+        import uuid
+        import re
+        safe_base = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', Path(audio.filename).name)
+        unique_prefix = uuid.uuid4().hex[:8]
+        safe_filename = f"{unique_prefix}_{safe_base}"
+        original_path = upload_dir / safe_filename
         with open(original_path, "wb") as f:
             f.write(content)
 
@@ -145,16 +155,17 @@ async def transcribe_simple(
             try:
                 from pydub import AudioSegment
                 audio_segment = AudioSegment.from_file(str(original_path))
-                wav_filename = Path(audio.filename).stem + ".wav"
+                wav_filename = f"{unique_prefix}_{Path(safe_base).stem}.wav"
                 wav_path = upload_dir / wav_filename
                 audio_segment.export(str(wav_path), format="wav")
-                os.remove(str(original_path))
+                try:
+                    os.remove(str(original_path))
+                except Exception:
+                    pass
                 final_path = str(wav_path)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Could not convert audio to WAV: {str(e)}",
-                )
+            except Exception:
+                # If pydub conversion fails (e.g. ffmpeg not found), Gemini handles mp3/m4a/flac/ogg directly
+                final_path = str(original_path)
         else:
             final_path = str(original_path)
 
@@ -181,8 +192,9 @@ async def transcribe_simple(
                     detail=f"Failed to upload audio to S3 storage: {str(e)}"
                 )
         elif is_last_chunk and not settings.USE_S3:
-            # Local storage mode — keep the file on disk; store relative path as the URL
-            audio_url = str(final_path)
+            # Local storage mode — keep the file on disk in uploads/; store web URL path
+            saved_filename = Path(final_path).name
+            audio_url = f"/uploads/{saved_filename}"
 
     # ── Process Transcript Segments ───────────────────────────────────────────
     if transcript_text is not None:
@@ -321,13 +333,20 @@ async def delete_transcript(
         if s.transcript_ids and t_uuid in s.transcript_ids:
             db.delete(s)
             
-    # Delete audio from S3 if it exists
-    if settings.USE_S3 and transcript.audio_url:
+    # Delete audio from S3 or local storage if it exists
+    if settings.USE_S3 and transcript.audio_url and "s3" in transcript.audio_url:
         from app.services.s3_service import delete_audio_from_s3
-        import asyncio
         from fastapi.concurrency import run_in_threadpool
         # Run S3 deletion in threadpool so it doesn't block the async event loop
         await run_in_threadpool(delete_audio_from_s3, transcript.audio_url)
+    elif not settings.USE_S3 and transcript.audio_url:
+        try:
+            filename = Path(transcript.audio_url).name
+            local_file = Path(settings.UPLOAD_DIR) / filename
+            if local_file.is_file():
+                local_file.unlink()
+        except Exception:
+            pass
             
     # Delete the transcript itself
     db.delete(transcript)
@@ -358,12 +377,23 @@ def get_transcript(
     if not transcript:
         raise HTTPException(status_code=404, detail="Transcript not found")
         
+    audio_url = transcript.audio_url
+    if settings.USE_S3 and audio_url and "s3" in audio_url:
+        from app.services.s3_service import generate_presigned_url
+        audio_url = generate_presigned_url(audio_url)
+    elif audio_url and not audio_url.startswith("http"):
+        clean_path = audio_url.replace("\\", "/")
+        if not clean_path.startswith("/"):
+            clean_path = f"/{clean_path}"
+        audio_url = clean_path
+
     return {
         "status": "success",
         "transcript": {
             "transcript_id": str(transcript.id),
             "title": transcript.title,
             "audio_filename": transcript.audio_filename,
+            "audio_url": audio_url,
             "full_transcript_data": transcript.full_transcript_data,
             "processing_timestamp": transcript.processing_timestamp.isoformat() if transcript.processing_timestamp else None
         }

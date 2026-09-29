@@ -70,6 +70,15 @@ export default function App() {
     setTranscriptCount((prev) => prev + 1);
   };
 
+  const [initialChatQuery, setInitialChatQuery] = useState('');
+
+  const handleSwitchToChat = (query = '') => {
+    setActiveTab('chat');
+    if (query) {
+      setInitialChatQuery(query);
+    }
+  };
+
   return (
     <div className="app-root-container">
       {/* Top Navigation */}
@@ -106,7 +115,7 @@ export default function App() {
           <TranscribeStudio
             isAuthenticated={isAuthenticated}
             onRequireAuth={() => setIsAuthModalOpen(true)}
-            onSwitchToChat={() => setActiveTab('chat')}
+            onSwitchToChat={handleSwitchToChat}
             onTranscriptCreated={handleTranscriptCreated}
           />
         )}
@@ -115,6 +124,7 @@ export default function App() {
           <ChatBot
             isAuthenticated={isAuthenticated}
             onRequireAuth={() => setIsAuthModalOpen(true)}
+            initialQuery={initialChatQuery}
           />
         )}
 
@@ -129,7 +139,7 @@ export default function App() {
           <TranscriptArchive
             isAuthenticated={isAuthenticated}
             onRequireAuth={() => setIsAuthModalOpen(true)}
-            onSwitchToChat={() => setActiveTab('chat')}
+            onSwitchToChat={handleSwitchToChat}
             onUpdateCount={(count) => setTranscriptCount(count)}
           />
         )}
